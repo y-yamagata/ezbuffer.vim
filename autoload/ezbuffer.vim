@@ -121,8 +121,8 @@ function! s:enterBuffer()
     endtry
 
     if bufexists(l:bufNr)
-        bwipeout!
         let l:winNr = s:getBufVar('beforeWinNr')
+        bwipeout!
         execute printf('keepalt keepjumps %d wincmd w', l:winNr)
         execute 'buffer ' . l:bufNr
     else
@@ -177,7 +177,9 @@ function! s:createBuffer(height)
 endfunction
 
 function! s:closeBuffer()
+    let l:winNr = s:getBufVar('beforeWinNr')
     bwipeout!
+    execute printf('keepalt keepjumps %d wincmd w', l:winNr)
 endfunction
 
 function! s:openBuffer(height)
