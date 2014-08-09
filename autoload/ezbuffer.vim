@@ -22,6 +22,12 @@ function! s:centering(text, len)
     endif
     return l:text
 endfunction
+
+function! s:wrapModifiable(order)
+    setlocal modifiable
+    execute a:order
+    setlocal nomodifiable
+endfunction
 " }}}
 
 " buffer variables {{{ 
@@ -78,9 +84,7 @@ function! s:getBufNr(line)
 endfunction
 
 function! s:removeBuffer(bufNr)
-    setlocal modifiable
-    normal! dd
-    setlocal nomodifiable
+    call s:wrapModifiable('normal! dd')
 
     let l:buffers = s:getBufVar('buffers')
     let l:i = 0
@@ -105,10 +109,10 @@ function! s:deleteBuffer()
             execute 'bdelete ' . l:bufNr
             call s:removeBuffer(l:bufNr)
         else
-            echo 'buffer is modified.'
+            echoerr 'buffer is modified.'
         endif
     else
-        echo 'no such buffer.'
+        echoerr 'no such buffer.'
         call s:removeBuffer(l:bufNr)
     endif
 endfunction
@@ -126,7 +130,7 @@ function! s:enterBuffer()
         execute printf('keepalt keepjumps %d wincmd w', l:winNr)
         execute 'buffer ' . l:bufNr
     else
-        echo 'no such buffer.'
+        echoerr 'no such buffer.'
         call s:removeBuffer(l:bufNr)
     endif
 endfunction
@@ -170,9 +174,9 @@ function! s:createBuffer(height)
     let l:bufNr = bufnr('%')
 
     execute printf('keepalt keepjumps belowright %d sp %s', a:height, s:bufferName)
-    setlocal filetype=ezbuffer buftype=nofile bufhidden=wipe nobuflisted noswapfile nonumber nowrap cursorline
+    setlocal filetype=ezbuffer buftype=nofile bufhidden=wipe nobuflisted noswapfile nonumber nowrap cursorline nomodifiable
     call s:setBufVar('beforeWinNr', l:beforeWinNr)
-    call s:listBuffer(l:bufNr)
+    call s:wrapModifiable(printf('call s:listBuffer(%d)', l:bufNr))
     call s:mapBufKeys()
 endfunction
 
@@ -193,7 +197,12 @@ endfunction
 " }}}
 
 function! ezbuffer#openBuffer()
-    let l:height = &lines / 4
+    let l:height = winheight('%') / 4
+    if l:height < 0
+        echoerr 'not enough room.'
+        return
+    endif
+
     call s:openBuffer(l:height)
 endfunction
 
