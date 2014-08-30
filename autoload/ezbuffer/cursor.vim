@@ -17,6 +17,10 @@ function! ezbuffer#cursor#new(input)
     let cursor.input = a:input
     let cursor.p = cursor.input.length()
 
+    function! cursor.pos()
+        return self.p
+    endfunction
+
     function! cursor.write(str)
         call self.input.write(a:str, self.p)
         let self.p += strchars(a:str)
@@ -60,14 +64,14 @@ function! ezbuffer#cursor#new(input)
         let self.p = 0
     endfunction
 
-    function! cursor.begin_highlight()
+    function! cursor.echonhl(str)
         if !hlexists('Cursor')
+            echon a:str
             return
         endif
-        echohl Cursor
-    endfunction
 
-    function! cursor.end_highlight()
+        echohl Cursor
+        echon a:str
         echohl None
     endfunction
 

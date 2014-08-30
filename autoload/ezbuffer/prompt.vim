@@ -8,6 +8,13 @@ let g:ezbuffer#prompt#loaded = 1
 let s:save_cpo = &cpo
 set cpo&vim
 
+augroup ezbuffer_prompt_dummy_commands
+    autocmd!
+    autocmd User EzBufferPromptStart silent! execute ''
+    autocmd User EzBufferPromptPreWrite silent! execute ''
+    autocmd User EzBufferPromptPostWrite silent! execute ''
+augroup END
+
 let s:commands = {}
 
 function! ezbuffer#prompt#new(prompt)
@@ -15,9 +22,13 @@ function! ezbuffer#prompt#new(prompt)
     let prompt.prompt = empty(a:prompt) ? '> ' : a:prompt
     let prompt.ch = ''
 
+    " TODO: function ref variable name
     function! prompt.execute(str)
         let self.input  = ezbuffer#input#new(a:str)
         let self.cursor = ezbuffer#cursor#new(self.input)
+        let Dummy = function('s:dummy')
+
+        doautocmd User EzBufferPromptStart
 
         call self._line()
         let self.ch = s:getchar()
@@ -26,18 +37,19 @@ function! ezbuffer#prompt#new(prompt)
                 return ''
             endif
 
-            let action = get(self.key_map, self.ch, '')
-            if !empty(action)
-                call call(action, [], self)
-                continue
+            doautocmd User EzBufferPromptPreWrite
+
+            let Action = get(self.key_map, self.ch, Dummy)
+            if Action != Dummy
+                call call(Action, [], self)
+            else
+                call self.cursor.write(self.ch)
             endif
 
-            call s:do_command('PromptPreWrite')
-            call self.cursor.write(self.ch)
-            call s:do_command('PromptPostWrite')
+            doautocmd User EzBufferPromptPostWrite
 
             call self._line()
-            let self.ch = getchar()
+            let self.ch = s:getchar()
         endwhile
 
         return self.get_str()
@@ -55,12 +67,10 @@ function! ezbuffer#prompt#new(prompt)
         let pos = self.cursor.pos()
         let cursor_ch = empty(self.input.at(pos)) ? ' ' : self.input.at(pos)
 
-        echo self.prompt
-
-        echon self.input.slice(0, pos - 1)
-        call self.cursor.begin_highlight()
-        echon cursor_ch
-        call self.cursor.end_highlight()
+        redraw
+        echon self.prompt
+        if pos > 0 | echon self.input.slice(0, pos - 1) | endif
+        call self.cursor.echonhl(cursor_ch)
         echon self.input.slice(pos + 1)
     endfunction
 
@@ -100,8 +110,8 @@ function! ezbuffer#prompt#new(prompt)
         \ "\<C-h>" : prompt._backspace,
         \ "\<C-d>" : prompt._delete,
         \ "\<C-u>" : prompt._clear,
-        \ "\<C-p>" : '',
-        \ "\<C-n>" : '',
+        \ "\<C-p>" : function('s:dummy'),
+        \ "\<C-n>" : function('s:dummy'),
     \ }
 
     return prompt
@@ -112,13 +122,7 @@ function! s:getchar()
     return type(c) == type(0) ? nr2char(c) : c
 endfunction
 
-function! s:do_command(command)
-    if !has_key(s:commands, a:command)
-        execute 'autocmd __dummy_commands__ User ' . a:command . ' silent! execute ""'
-        let s:commands[a:command] = 'doautocmd User ' . a:command
-    endif
-
-    execute s:commands[a:command]
+function! s:dummy()
 endfunction
 
 let &cpo = s:save_cpo

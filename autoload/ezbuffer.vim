@@ -21,8 +21,10 @@ function! s:extend(buffer, before_winnr)
     let ezbuffer = a:buffer
     let ezbuffer.winnr = winnr()
     let ezbuffer.before_winnr = a:before_winnr
+    let ezbuffer.before_ward  = ''
     let ezbuffer.origins  = map(s:buffers(), '[v:val, s:bufname(v:val)]')
     let ezbuffer.currents = copy(ezbuffer.origins)
+    let ezbuffer.prompt = {}
 
     function! ezbuffer.enter(line)
         let bufnr = self._buffer(a:line)
@@ -61,7 +63,7 @@ function! s:extend(buffer, before_winnr)
     endfunction
 
     function! ezbuffer._remove(bufnr)
-        execute 'normal! dd'
+        silent! normal! dd
 
         let i = 0
         for arg in self.origins
@@ -90,6 +92,7 @@ function! s:extend(buffer, before_winnr)
     function! ezbuffer.print(cursor_bufnr)
         try
             call self.set_context('modifiable', 1)
+            silent! normal! ggdG
             call self._print(a:cursor_bufnr)
         finally
             call self.set_context('modifiable', 0)
@@ -123,6 +126,21 @@ function! s:extend(buffer, before_winnr)
             return self.currents[a:line - header - 1][0]
         endif
         throw 'line error.'
+    endfunction
+
+    function! ezbuffer.search()
+        let self.prompt = ezbuffer#prompt#new('>>> ')
+        call self.prompt.execute('')
+    endfunction
+
+    function! ezbuffer.pickup()
+        let pattern = self.prompt.get_str()
+        " TODO: implement fuzzy search
+        " let pattern = join(split(word, '\zs'), '.*')
+        let candidates = copy(self.origins)
+
+        let self.currents = filter(candidates, 'match(v:val[1], "' . pattern . '") >= 0')
+        call self.print(-1)
     endfunction
 
     return ezbuffer
@@ -233,10 +251,28 @@ function! s:enter()
     call s:ezbuffer.enter(line('.'))
 endfunction
 
+function! s:reflesh()
+    call s:ezbuffer.print(-1)
+endfunction
+
+function! s:search()
+    call s:ezbuffer.search()
+endfunction
+
 function! s:close()
     call s:ezbuffer.close()
 endfunction
+
+function! s:pickup()
+    call s:ezbuffer.pickup()
+endfunction
 " }}}
+
+augroup ezbuffer_commands
+    autocmd!
+    autocmd User EzBufferPromptStart call s:pickup()
+    autocmd User EzBufferPromptPostWrite call s:pickup()
+augroup END
 
 " external functions {{{
 function! ezbuffer#open()
@@ -251,7 +287,12 @@ function! ezbuffer#open()
 
     nnoremap <silent> <buffer> d :call <SID>delete()<CR>
     nnoremap <silent> <buffer> <Enter> :call <SID>enter()<CR>
+    nnoremap <silent> <buffer> <C-j> :call <SID>enter()<CR>
+    nnoremap <silent> <buffer> e :call <SID>enter()<CR>
+    nnoremap <silent> <buffer> r :call <SID>reflesh()<CR>
+    nnoremap <silent> <buffer> <C-p> :call <SID>search()<CR>
     nnoremap <silent> <buffer> q :call <SID>close()<CR>
+    nnoremap <silent> <buffer> <Esc> :call <SID>close()<CR>
 endfunction
 " }}}
 
