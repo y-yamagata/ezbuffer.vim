@@ -3,6 +3,7 @@
 if exists('b:current_syntax')
     finish
 endif
+let b:current_syntax = "ezbuffer"
 
 let s:save_cpo = &cpo
 set cpo&vim
@@ -13,9 +14,7 @@ syntax match EzBufferMode /\s\+u\?[%#]\?[ah][=-]\?+\?\s\+/
 syntax match EzBufferFileType /\zs[^\s>]\+\ze\s\+/
 syntax match EzBufferFileName /[ /]\zs[^ />]\+\ze$/
 
-let b:current_syntax = "ezbuffer"
-
-highlight default link EzBufferTag Comment
+highlight default link EzBufferTag Identifier
 highlight default link EzBufferBufNr Number
 highlight default link EzBufferMode Keyword
 highlight default link EzBufferFileType Type

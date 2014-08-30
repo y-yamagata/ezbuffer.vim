@@ -84,7 +84,7 @@ function! s:extend(buffer, before_winnr)
 
     function! ezbuffer.close()
         bwipeout!
-        execute 'keepalt keepjumps ' . self.winnr . ' wincmd w'
+        execute 'keepalt keepjumps ' . self.before_winnr . ' wincmd w'
     endfunction
 
     function! ezbuffer.print(cursor_bufnr)
@@ -241,7 +241,7 @@ endfunction
 " external functions {{{
 function! ezbuffer#open()
     if s:winexists(s:BUFFER_NAME)
-        execute 'keepalt keepjumps ' . s:ezbuffer.before_winnr . ' wincmd w'
+        execute 'keepalt keepjumps ' . s:ezbuffer.winnr . ' wincmd w'
         return
     endif
     let cursor_bufnr = bufnr('%')
