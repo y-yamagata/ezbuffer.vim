@@ -1,210 +1,259 @@
 " ezbuffer.vim
 
-if exists('g:ezbuffer_loaded')
+if exists('g:ezbuffer#loaded')
     finish
 endif
-let g:ezbuffer_loaded = 1
+let g:ezbuffer#loaded = 1
 
 let s:save_cpo = &cpo
 set cpo&vim
 
-let s:bufferName = '__ezbuffer__'
+" constant {{{
+let s:BUFFER_NAME = '__ezbuffer__'
+" }}}
+
+" variable {{{
+let s:ezbuffer = {}
+" }}}
+
+" ezbuffer instance functions {{{
+function! s:extend(buffer, before_winnr)
+    let ezbuffer = a:buffer
+    let ezbuffer.winnr = winnr()
+    let ezbuffer.before_winnr = a:before_winnr
+    let ezbuffer.origins  = map(s:buffers(), '[v:val, s:bufname(v:val)]')
+    let ezbuffer.currents = copy(ezbuffer.origins)
+
+    function! ezbuffer.enter(line)
+        let bufnr = self._buffer(a:line)
+        if bufexists(bufnr)
+            bwipeout!
+            execute 'keepalt keepjumps ' . self.before_winnr . ' wincmd w'
+            execute 'buffer ' . bufnr
+        else
+            echoerr 'no such buffer.'
+            call self._remove(bufnr)
+        endif
+    endfunction
+
+    function! ezbuffer.delete(line)
+        try
+            call self.set_context('modifiable', 1)
+            call self._delete(a:line)
+        finally
+            call self.set_context('modifiable', 0)
+        endtry
+    endfunction
+
+    function! ezbuffer._delete(line)
+        let bufnr = self._buffer(a:line)
+        if bufexists(bufnr)
+            if ! getbufvar(bufnr, "&modified")
+                execute 'bdelete ' . bufnr
+                call self._remove(bufnr)
+            else
+                echoerr 'buffer is modified.'
+            endif
+        else
+            echoerr 'no such buffer.'
+            call self._remove(bufnr)
+        endif
+    endfunction
+
+    function! ezbuffer._remove(bufnr)
+        execute 'normal! dd'
+
+        let i = 0
+        for arg in self.origins
+            if arg[0] == a:bufnr
+                call remove(self.origins, i)
+                break
+            endif
+            let i += 1
+        endfor
+
+        let i = 0
+        for arg in self.currents
+            if arg[0] == a:bufnr
+                call remove(self.currents, i)
+                break
+            endif
+            let i += 1
+        endfor
+    endfunction
+
+    function! ezbuffer.close()
+        bwipeout!
+        execute 'keepalt keepjumps ' . self.winnr . ' wincmd w'
+    endfunction
+
+    function! ezbuffer.print(cursor_bufnr)
+        try
+            call self.set_context('modifiable', 1)
+            call self._print(a:cursor_bufnr)
+        finally
+            call self.set_context('modifiable', 0)
+        endtry
+    endfunction
+
+    function! ezbuffer._print(cursor_bufnr)
+        let headers = ['<bufnr>', '<mode>', '<filetype>', '<bufname>',]
+        call setline(1, join(headers, '  '))
+
+        let l = 2
+        for [b, name] in self.currents
+            let values = []
+            call add(values, s:centering(string(b), len(headers[0])))
+            call add(values, s:centering(s:mode(b), len(headers[1])))
+            call add(values, s:centering(s:filetype(b), len(headers[2])))
+            call add(values, name)
+
+            call setline(l, join(values, '  '))
+            if b == a:cursor_bufnr
+                call cursor(l, 0)
+            endif
+
+            let l += 1
+        endfor
+    endfunction
+
+    function! ezbuffer._buffer(line)
+        let header = 1
+        if a:line > header && (a:line - header - 1) < len(self.currents)
+            return self.currents[a:line - header - 1][0]
+        endif
+        throw 'line error.'
+    endfunction
+
+    return ezbuffer
+endfunction
+
+function! s:new()
+    let before_winnr = winnr()
+
+    let builder = ezbuffer#buffer#builder#new()
+    call builder.set_keepalt(1)
+            \.set_keepjumps(1)
+            \.set_creation(printf('belowright %d sp', winheight('%') / 4))
+            \.set_name(s:BUFFER_NAME)
+            \.extend_context({
+                \'filetype': 'ezbuffer',
+                \'buftype': 'nofile',
+                \'bufhidden': 'wipe',
+                \'buflisted': 0,
+                \'swapfile': 0,
+                \'number': 0,
+                \'wrap': 0,
+                \'modifiable': 0,
+                \'cursorline': 1,
+            \})
+
+    let buffer   = builder.build()
+    let ezbuffer = s:extend(buffer, before_winnr)
+
+    return ezbuffer
+endfunction
+" }}}
 
 " utility {{{
+function! s:winexists(name)
+    let winnr = bufwinnr(a:name)
+    if winnr < 0
+        return 0
+    endif
+    return 1
+endfunction
+
+function! s:buffers()
+    return filter(range(1, bufnr('$')), 'bufexists(v:val) && buflisted(v:val) && getbufvar(v:val, "&filetype") != "ezbuffer"')
+endfunction
+
 function! s:centering(text, len)
     if len(a:text) > a:len
         return a:text[: a:len - 2] . '~'
     else
-        let l:d = a:len - len(a:text)
-        let l:c = l:d / 2
-        let l:r = l:d % 2
-        let l:text = repeat(' ', l:c) . a:text . repeat(' ', l:c) . repeat(' ', l:r)
+        let d = a:len - len(a:text)
+        let c = d / 2
+        let r = d % 2
+        let text = repeat(' ', c) . a:text . repeat(' ', c) . repeat(' ', r)
     endif
-    return l:text
+    return text
 endfunction
 
-function! s:wrapModifiable(order)
-    setlocal modifiable
-    execute a:order
-    setlocal nomodifiable
-endfunction
-" }}}
-
-" buffer variables {{{ 
-function! s:getBufVar(key)
-    return getbufvar(s:bufferName, a:key)
+function! s:filetype(bufnr)
+    let ftype = getbufvar(a:bufnr, '&filetype')
+    if empty(ftype)
+        return '-'
+    endif
+    return ftype
 endfunction
 
-function! s:setBufVar(key, value)
-    call setbufvar(s:bufferName, a:key, a:value)
-endfunction
-" }}}
-
-" ezbuffer {{{
-function! s:mapBufKeys()
-    nnoremap <silent> <buffer> d :call <SID>deleteBuffer()<CR>
-    nnoremap <silent> <buffer> q :call <SID>closeBuffer()<CR>
-    nnoremap <silent> <buffer> <Enter> :call <SID>enterBuffer()<CR>
+function! s:bufname(bufnr)
+    let bufname = bufname(a:bufnr)
+    if empty(bufname)
+        return '[No Name]'
+    endif
+    return bufname
 endfunction
 
-function! s:buildBufMode(buf)
+function! s:mode(bufnr)
     let mode = ''
-    if !buflisted(a:buf)
+    if !buflisted(a:bufnr)
         let mode .= 'u'
     endif
-    if bufwinnr('%') == bufwinnr(a:buf)
+    if bufwinnr('%') == bufwinnr(a:bufnr)
         let mode .= '%'
-    elseif bufnr('#') == a:buf
+    elseif bufnr('#') == a:bufnr
         let mode .= '#'
     endif
-    if winbufnr(bufwinnr(a:buf)) == a:buf
+    if winbufnr(bufwinnr(a:bufnr)) == a:bufnr
         let mode .= 'a'
     else
         let mode .= 'h'
     endif
-    if !getbufvar(a:buf, "&modifiable")
+    if !getbufvar(a:bufnr, "&modifiable")
         let mode .= '-'
-    elseif getbufvar(a:buf, "&readonly")
+    elseif getbufvar(a:bufnr, "&readonly")
         let mode .= '='
     endif
-    if getbufvar(a:buf, "&modified")
+    if getbufvar(a:bufnr, "&modified")
         let mode .= '+'
     endif
 
     return mode
 endfunction
+" }}}
 
-function! s:getBufNr(line)
-    let l:header = 1
-    let l:buffers = s:getBufVar('buffers')
-    if a:line > l:header && (a:line - l:header) <= len(l:buffers)
-        return l:buffers[a:line - l:header - 1]
-    endif
-    throw 'line error.'
+" glue function {{{
+function! s:delete()
+    call s:ezbuffer.delete(line('.'))
 endfunction
 
-function! s:removeBuffer(bufNr)
-    call s:wrapModifiable('normal! dd')
-
-    let l:buffers = s:getBufVar('buffers')
-    let l:i = 0
-    for l:buf in l:buffers
-        if l:buf == a:bufNr
-            call remove(l:buffers, i)
-            break
-        endif
-        let l:i += 1
-    endfor
+function! s:enter()
+    call s:ezbuffer.enter(line('.'))
 endfunction
 
-function! s:deleteBuffer()
-    try
-        let l:bufNr = s:getBufNr(line('.'))
-    catch
-        echoerr v:exception
-    endtry
-
-    if bufexists(l:bufNr)
-        if ! getbufvar(l:bufNr, "&modified")
-            execute 'bdelete ' . l:bufNr
-            call s:removeBuffer(l:bufNr)
-        else
-            echoerr 'buffer is modified.'
-        endif
-    else
-        echoerr 'no such buffer.'
-        call s:removeBuffer(l:bufNr)
-    endif
-endfunction
-
-function! s:enterBuffer()
-    try
-        let l:bufNr = s:getBufNr(line('.'))
-    catch
-        echoerr v:exception
-    endtry
-
-    if bufexists(l:bufNr)
-        let l:winNr = s:getBufVar('beforeWinNr')
-        bwipeout!
-        execute printf('keepalt keepjumps %d wincmd w', l:winNr)
-        execute 'buffer ' . l:bufNr
-    else
-        echoerr 'no such buffer.'
-        call s:removeBuffer(l:bufNr)
-    endif
-endfunction
-
-function! s:listBuffer(cursorBuf)
-    let l:keys = [
-        \ '<bufnr>',
-        \ '<mode>',
-        \ '<filetype>',
-        \ '<bufname>',
-    \ ]
-    let l:glue = '  '
-    call setline(1, join(l:keys, l:glue))
-
-    let l:buffers = filter(range(1, bufnr('$')), 'bufexists(v:val) && buflisted(v:val) && getbufvar(v:val, "&filetype") != "ezbuffer"')
-    let l:l = 2
-    let l:values = []
-    for l:buf in l:buffers
-        call add(l:values, s:centering(string(l:buf), len(l:keys[0])))
-        call add(l:values, s:centering(s:buildBufMode(l:buf), len(l:keys[1])))
-        let l:ftype = getbufvar(l:buf, '&filetype')
-        call add(l:values, s:centering(len(l:ftype) > 0 ? l:ftype : '-', len(l:keys[2])))
-        let l:bufName = bufname(l:buf)
-        call add(l:values, len(l:bufName) > 0 ? l:bufName : '[No Name]')
-
-        call setline(l:l, join(l:values, l:glue))
-        " move cursor
-        if l:buf == a:cursorBuf
-            call cursor(l:l, 0)
-        endif
-
-        let l:l += 1
-        let l:values = []
-    endfor
-
-    call s:setBufVar('buffers', l:buffers)
-endfunction
-
-function! s:createBuffer(height)
-    let l:beforeWinNr = winnr()
-    let l:bufNr = bufnr('%')
-
-    execute printf('keepalt keepjumps belowright %d sp %s', a:height, s:bufferName)
-    setlocal filetype=ezbuffer buftype=nofile bufhidden=wipe nobuflisted noswapfile nonumber nowrap cursorline nomodifiable
-    call s:setBufVar('beforeWinNr', l:beforeWinNr)
-    call s:wrapModifiable(printf('call s:listBuffer(%d)', l:bufNr))
-    call s:mapBufKeys()
-endfunction
-
-function! s:closeBuffer()
-    let l:winNr = s:getBufVar('beforeWinNr')
-    bwipeout!
-    execute printf('keepalt keepjumps %d wincmd w', l:winNr)
-endfunction
-
-function! s:openBuffer(height)
-    let l:ezBufNr = bufwinnr(printf('^%s$', s:bufferName))
-    if l:ezBufNr < 0
-        call s:createBuffer(a:height)
-    else
-        execute printf('keepalt keepjumps %d wincmd w', l:ezBufNr)
-    endif
+function! s:close()
+    call s:ezbuffer.close()
 endfunction
 " }}}
 
-function! ezbuffer#openBuffer()
-    let l:height = winheight('%') / 4
-    if l:height < 0
-        echoerr 'not enough room.'
+" external functions {{{
+function! ezbuffer#open()
+    if s:winexists(s:BUFFER_NAME)
+        execute 'keepalt keepjumps ' . s:ezbuffer.before_winnr . ' wincmd w'
         return
     endif
+    let cursor_bufnr = bufnr('%')
 
-    call s:openBuffer(l:height)
+    let s:ezbuffer = s:new()
+    call s:ezbuffer.print(cursor_bufnr)
+
+    nnoremap <silent> <buffer> d :call <SID>delete()<CR>
+    nnoremap <silent> <buffer> <Enter> :call <SID>enter()<CR>
+    nnoremap <silent> <buffer> q :call <SID>close()<CR>
 endfunction
+" }}}
 
 let &cpo = s:save_cpo
 unlet s:save_cpo
