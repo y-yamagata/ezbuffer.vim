@@ -11,8 +11,10 @@ set cpo&vim
 augroup ezbuffer_prompt_dummy_commands
     autocmd!
     autocmd User EzBufferPromptStart silent! execute ''
+    autocmd User EzBufferPromptFinish silent! execute ''
     autocmd User EzBufferPromptPreWrite silent! execute ''
     autocmd User EzBufferPromptPostWrite silent! execute ''
+    autocmd User EzBufferPromptEscape silent! execute ''
 augroup END
 
 let s:commands = {}
@@ -34,7 +36,8 @@ function! ezbuffer#prompt#new(prompt)
         let self.ch = s:getchar()
         while self.ch != "\<CR>" && self.ch != "\<C-j>"
             if self.ch == "\<Esc>"
-                return ''
+                doautocmd User EzBufferPromptEscape
+                break
             endif
 
             doautocmd User EzBufferPromptPreWrite
@@ -51,6 +54,8 @@ function! ezbuffer#prompt#new(prompt)
             call self._line()
             let self.ch = s:getchar()
         endwhile
+
+        doautocmd User EzBufferPromptFinish
 
         return self.get_str()
     endfunction

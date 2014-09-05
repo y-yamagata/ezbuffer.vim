@@ -14,6 +14,7 @@ let s:BUFFER_NAME = '__ezbuffer__'
 
 " variable {{{
 let s:ezbuffer = {}
+let s:prompt = {}
 " }}}
 
 " ezbuffer instance functions {{{
@@ -24,7 +25,6 @@ function! s:extend(buffer, before_winnr)
     let ezbuffer.before_ward  = ''
     let ezbuffer.origins  = map(s:buffers(), '[v:val, s:bufname(v:val)]')
     let ezbuffer.currents = copy(ezbuffer.origins)
-    let ezbuffer.prompt = {}
 
     function! ezbuffer.enter(line)
         let bufnr = self._buffer(a:line)
@@ -128,19 +128,15 @@ function! s:extend(buffer, before_winnr)
         throw 'line error.'
     endfunction
 
-    function! ezbuffer.search()
-        let self.prompt = ezbuffer#prompt#new('>>> ')
-        call self.prompt.execute('')
-    endfunction
-
-    function! ezbuffer.pickup()
-        let pattern = self.prompt.get_str()
+    function! ezbuffer.pickup(word)
+        let pattern = a:word
         " TODO: implement fuzzy search
         " let pattern = join(split(word, '\zs'), '.*')
         let candidates = copy(self.origins)
 
         let self.currents = filter(candidates, 'match(v:val[1], "' . pattern . '") >= 0')
-        call self.print(-1)
+        " TODO: get(get(...), ...) -> anything
+        call self.print(get(get(self.currents, 0, []), 0, -1))
     endfunction
 
     return ezbuffer
@@ -256,7 +252,8 @@ function! s:reflesh()
 endfunction
 
 function! s:search()
-    call s:ezbuffer.search()
+    let s:prompt = ezbuffer#prompt#new('>>> ')
+    call s:prompt.execute('')
 endfunction
 
 function! s:close()
@@ -264,7 +261,11 @@ function! s:close()
 endfunction
 
 function! s:pickup()
-    call s:ezbuffer.pickup()
+    call s:ezbuffer.pickup(s:prompt.get_str())
+endfunction
+
+function! s:escape()
+    call s:ezbuffer.pickup('')
 endfunction
 " }}}
 
@@ -272,6 +273,7 @@ augroup ezbuffer_commands
     autocmd!
     autocmd User EzBufferPromptStart call s:pickup()
     autocmd User EzBufferPromptPostWrite call s:pickup()
+    autocmd User EzBufferPromptEscape call s:escape()
 augroup END
 
 " external functions {{{
