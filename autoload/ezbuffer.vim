@@ -92,7 +92,7 @@ function! s:extend(buffer, before_winnr)
     function! ezbuffer.print(cursor_bufnr)
         try
             call self.set_context('modifiable', 1)
-            silent! normal! ggdG
+            silent! normal! gg"_dG
             call self._print(a:cursor_bufnr)
         finally
             call self.set_context('modifiable', 0)
